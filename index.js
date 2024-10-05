@@ -105,6 +105,67 @@ app.delete("/notes/:id", async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get("/health", async (req, res) => {
+  const mongoState = mongoose.connection.readyState;
+  const mongoStates = {
+    0: "disconnected",
+    1: "connected",
+    2: "connecting",
+    3: "disconnecting",
+  };
+
+  // Get system health details
+  const memoryUsage = process.memoryUsage();
+  const uptime = process.uptime();
+  const timestamp = new Date().toISOString();
+
+  // Set memory usage thresholds (in MB)
+  const memoryThresholds = {
+    rss: 200, // Resident Set Size
+    heapUsed: 150, // Heap used
+  };
+
+  const rssInMB = (memoryUsage.rss / 1024 / 1024).toFixed(2);
+  const heapUsedInMB = (memoryUsage.heapUsed / 1024 / 1024).toFixed(2);
+
+  const healthInfo = {
+    status: mongoState === 1 && rssInMB < memoryThresholds.rss && heapUsedInMB < memoryThresholds.heapUsed ? "healthy" : "unhealthy",
+    message: mongoState === 1 ? "Application is connected to MongoDB" : "Application is not connected to MongoDB",
+    uptime: `${Math.floor(uptime / 60)} minutes ${Math.floor(uptime % 60)} seconds`,
+    memoryUsage: {
+      rss: `${rssInMB} MB`,
+      heapTotal: `${(memoryUsage.heapTotal / 1024 / 1024).toFixed(2)} MB`,
+      heapUsed: `${heapUsedInMB} MB`,
+      external: `${(memoryUsage.external / 1024 / 1024).toFixed(2)} MB`,
+    },
+    memoryWarnings: {
+      rss: rssInMB >= memoryThresholds.rss ? `Warning: RSS memory usage (${rssInMB} MB) exceeds the threshold of ${memoryThresholds.rss} MB.` : "Memory usage is within acceptable limits.",
+      heapUsed: heapUsedInMB >= memoryThresholds.heapUsed ? `Warning: Heap used memory (${heapUsedInMB} MB) exceeds the threshold of ${memoryThresholds.heapUsed} MB.` : "Heap memory usage is within acceptable limits."
+    },
+    mongo: {
+      state: mongoStates[mongoState],
+      isConnected: mongoState === 1,
+      suggestion: mongoState === 1 ? "No action needed. MongoDB is connected." : "Check MongoDB connection and restart the service if necessary.",
+    },
+    timestamp: timestamp,
+  };
+
+  // If MongoDB is connected and memory is within limits, return 200, otherwise return 500
+  if (mongoState === 1 && rssInMB < memoryThresholds.rss && heapUsedInMB < memoryThresholds.heapUsed) {
+    return res.status(200).json(healthInfo);
+  } else {
+    return res.status(500).json({
+      ...healthInfo,
+      actionableMessage: "Please review the warnings and take the appropriate actions: " +
+        (mongoState !== 1 ? "Check MongoDB connection. " : "") +
+        (rssInMB >= memoryThresholds.rss ? "Investigate high memory usage (RSS). " : "") +
+        (heapUsedInMB >= memoryThresholds.heapUsed ? "Investigate high heap memory usage." : "")
+    });
+  }
+});
+
+
 mongoose
   .connect(mongoURL, {
     useNewUrlParser: true,
