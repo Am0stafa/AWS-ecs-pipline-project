@@ -115,12 +115,10 @@ app.get("/health", async (req, res) => {
     3: "disconnecting",
   };
 
-  // Get system health details
   const memoryUsage = process.memoryUsage();
   const uptime = process.uptime();
   const timestamp = new Date().toISOString();
 
-  // Set memory usage thresholds (in MB)
   const memoryThresholds = {
     rss: 200, // Resident Set Size
     heapUsed: 150, // Heap used
